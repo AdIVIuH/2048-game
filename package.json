@@ -1,0 +1,14 @@
+{
+  "name": "2048-game",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.html",
+  "scripts": {
+    "start": "parcel index.html --open",
+    "build": "parcel build index.html"
+  },
+  "dependencies": {
+    "parcel-bundler": "^2.1.1"
+  },
+  "keywords": []
+}
