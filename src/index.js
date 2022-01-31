@@ -1,275 +1,183 @@
 import "./styles.css";
+
 /* eslint-disable */
 
-function main() {
-  const [element, tiles] = generateTiles();
-  add_number(tiles);
-  add_number(tiles);
-  Print(element, tiles);
-  _listeners(element, tiles);
-}
+// class Game depends on these constants
+const UP = "UP";
+const RIGHT = "RIGHT";
+const DOWN = "DOWN";
+const LEFT = "LEFT";
 
-function generateTiles() {
-  const element = document.querySelector(".tiles");
-  element.style.setProperty("--size", 4);
-  const tiles = Array.from({ length: 4 * 4 }).fill(0);
-  return [element, tiles];
-}
+let GAME;
 
-function add_number(tiles) {
-  if (!some(tiles, (x) => x == 0)) return;
-  const index = Math.floor(Math.random() * tiles.length);
-  const number = Math.random() <= 0.9 ? 2 : 4;
-  if (tiles[index] == 0) {
-    tiles[index] = number;
-  } else {
-    add_number(tiles);
+class Game {
+  constructor(onStateChange, onWin, onLose) {
+    this.onStateChange = onStateChange;
+    this.onWin = onWin;
+    this.onLose = onLose;
+  }
+
+  start(size) {
+    this.size = size;
+    this.tiles = Array.from({ length: size * size }).fill(0);
+    this._add_number();
+    this._add_number();
+  }
+
+  make_movement(direction) {
+    if (this.is_win() || this.is_lose()) return;
+
+    this.oldTiles = this.tiles;
+    this._update_state(direction);
+
+    if (!this._tilesUpdated()) {
+      if (!this.is_win()) this._add_number();
+      this.onStateChange();
+    }
+
+    if (this.is_win()) {
+      this.onWin();
+    }
+
+    if (this.is_lose()) {
+      this.onLose();
+    }
+
+    return this.tiles;
+  }
+
+  is_lose() {
+    return !this.tiles.some(x => x === 0);
+  }
+
+  is_win() {
+    return this.tiles.some(x => x === 2048);
+  }
+
+  // recursion fixed
+  _add_number() {
+    if (!this.tiles.some(x => x === 0)) return;
+
+    let emptiesIndexies = this.tiles
+      .map((x, i) => ({
+        i, x
+      }))
+      .filter(el => el.x === 0)
+      .map(el => el.i);
+
+    const index = emptiesIndexies[Math.floor(Math.random() * emptiesIndexies.length)];
+    this.tiles[index] = Math.random() <= 0.9 ? 2 : 4;
+  }
+
+  _update_state(direction) {
+    const newState = [...this.tiles];
+    const size = Math.sqrt(this.tiles.length);
+    for (let i = 0; i < size; ++i) {
+      let isHorizontal = direction === RIGHT || direction === LEFT;
+      let isLine = index => isHorizontal ? Math.trunc(index / size) === i : index % size === i;
+      const line = this.tiles.filter((t, j) => isLine(j));
+      const moved = line.filter(x => x !== 0);
+      const merged = this._merge(moved);
+      const empty = Array.from({ length: size - merged.length }).fill(0);
+      const padded = direction === UP || direction === LEFT ? merged.concat(empty) : empty.concat(merged);
+      for (let j = 0; j < size * size; ++j) {
+        if (isLine(j)) {
+          newState[j] = padded.shift();
+        }
+      }
+    }
+
+    this.tiles = newState;
+  }
+
+  _merge(array) {
+    for (let i = 0; i < array.length - 1; ++i) {
+      const current = array[i];
+      const next = array[i + 1];
+      if (current === next) {
+        array[i] = current * 2;
+        array[i + 1] = 0;
+      }
+    }
+    return array.filter(t => t !== 0);
+  }
+
+  _tilesUpdated() {
+    return JSON.stringify(this.oldTiles) === JSON.stringify(this.tiles);
   }
 }
 
-function _listeners(element, tiles) {
-  const f = (evt) => {
-    switch (evt.key) {
-      case "ArrowUp":
-        if (move_up(tiles)) {
-          Print(element, tiles);
-          if (is_win(tiles)) {
-            document.removeEventListener("keydown", f);
-            return;
-          }
-          add_number(tiles);
-          Print(element, tiles);
-        } else if (is_lose(tiles)) {
-          document.removeEventListener("keydown", f);
-        }
-        return;
-      case "ArrowRight":
-        if (move_right(tiles)) {
-          Print(element, tiles);
-          if (is_win(tiles)) {
-            document.removeEventListener("keydown", f);
-            return;
-          }
-          add_number(tiles);
-          Print(element, tiles);
-        } else if (is_lose(tiles)) {
-          document.removeEventListener("keydown", f);
-        }
-        return;
-      case "ArrowDown":
-        if (move_down(tiles)) {
-          Print(element, tiles);
-          if (is_win(tiles)) {
-            document.removeEventListener("keydown", f);
-            return;
-          }
-          add_number(tiles);
-          Print(element, tiles);
-        } else if (is_lose(tiles)) {
-          document.removeEventListener("keydown", f);
-        }
-        return;
-      case "ArrowLeft":
-        if (move_left(tiles)) {
-          Print(element, tiles);
-          if (is_win(tiles)) {
-            document.removeEventListener("keydown", f);
-            return;
-          }
-          add_number(tiles);
-          Print(element, tiles);
-        } else if (is_lose(tiles)) {
-          document.removeEventListener("keydown", f);
-        }
-        return;
-      default:
-    }
-  };
-  document.addEventListener("keydown", f);
+function main() {
+  let size = 4;
+  GAME = new Game(onStateChangeHandler, onWinHandler, onLoseHandler);
+  GAME.start(size);
+
+  initializeTiles(size);
 }
 
-function Print(element, tiles) {
+function initializeTiles(size) {
+  const element = document.querySelector(".tiles");
+  element.style.setProperty("--size", size);
+  print(element, GAME.tiles);
+
+  add_listeners();
+}
+
+function add_listeners() {
+  document.addEventListener("keydown", keydown_handler);
+}
+
+function keydown_handler(e) {
+  let direction = get_direction_by_key(e.key);
+  if (!direction) return;
+
+  GAME.make_movement(direction);
+}
+
+function onStateChangeHandler() {
+  const element = document.querySelector(".tiles");
+  print(element, this.tiles);
+}
+
+function onLoseHandler() {
+  document.removeEventListener("keydown", keydown_handler);
+  show_message("you lose!");
+}
+
+function onWinHandler() {
+  document.removeEventListener("keydown", keydown_handler);
+  show_message("you win!");
+}
+
+function get_direction_by_key(key) {
+  switch (key) {
+    case "ArrowUp":
+      return UP;
+    case "ArrowRight":
+      return RIGHT;
+    case "ArrowDown":
+      return DOWN;
+    case "ArrowLeft":
+      return LEFT;
+    default:
+      return;
+  }
+}
+
+function print(element, tiles) {
   element.innerHTML = "";
-  for (const x of tiles) {
-    const scale = x == 0 ? 0 : Math.log2(x);
+  for (const tileValue of tiles) {
+    const scale = tileValue === 0 ? 0 : Math.log2(tileValue);
     const sat = Math.min(scale * 16, 100);
     const light = Math.max(40, 100 - sat / 2);
-    element.innerHTML += `<span class="tile" style="--sat: ${sat}; --light: ${light}">${
-      x == 0 ? "" : x
-    }</span>`;
+    element.innerHTML += `<span class="tile" style="--sat: ${sat}; --light: ${light}">${tileValue === 0 ? "" : tileValue}</span>`;
   }
 }
 
-function move_up(tiles) {
-  const prev = cloned(tiles);
-  const size = Math.sqrt(tiles.length);
-  for (let i = 0; i < size; ++i) {
-    const column = filter(tiles, (_, j) => j % size == i);
-    const moved = filter(column, (x) => x !== 0);
-    const merged = merge_up(moved);
-    const padded = concat(
-      merged,
-      Array.from({ length: size - merged.length }).fill(0)
-    );
-    for (let j = 0; j < size * size; ++j) {
-      if (j % size == i) {
-        tiles[j] = padded.shift();
-      }
-    }
-  }
-  return !is_equal(prev, tiles);
-}
-function move_right(tiles) {
-  const prev = cloned(tiles);
-  const size = Math.sqrt(tiles.length);
-  for (let i = 0; i < size; ++i) {
-    const row = filter(tiles, (_, j) => Math.trunc(j / size) == i);
-    const moved = filter(row, (x) => x !== 0);
-    const merged = merge_right(moved);
-    const padded = concat(
-      Array.from({ length: size - merged.length }).fill(0),
-      merged
-    );
-    for (let j = 0; j < size * size; ++j) {
-      if (Math.trunc(j / size) == i) {
-        tiles[j] = padded.shift();
-      }
-    }
-  }
-  return !is_equal(prev, tiles);
-}
-function move_down(tiles) {
-  const prev = cloned(tiles);
-  const size = Math.sqrt(tiles.length);
-  for (let i = 0; i < size; ++i) {
-    const column = filter(tiles, (_, j) => j % size == i);
-    const moved = filter(column, (x) => x !== 0);
-    const merged = merge_down(moved);
-    const padded = concat(
-      Array.from({ length: size - merged.length }).fill(0),
-      merged
-    );
-    for (let j = 0; j < size * size; ++j) {
-      if (j % size == i) {
-        tiles[j] = padded.shift();
-      }
-    }
-  }
-  return !is_equal(prev, tiles);
-}
-function move_left(tiles) {
-  const prev = cloned(tiles);
-  const size = Math.sqrt(tiles.length);
-  for (let i = 0; i < size; ++i) {
-    const row = filter(tiles, (_, j) => Math.trunc(j / size) == i);
-    const moved = filter(row, (x) => x !== 0);
-    const merged = merge_left(moved);
-    const padded = concat(
-      merged,
-      Array.from({ length: size - merged.length }).fill(0)
-    );
-    for (let j = 0; j < size * size; ++j) {
-      if (Math.trunc(j / size) == i) {
-        tiles[j] = padded.shift();
-      }
-    }
-  }
-  return !is_equal(prev, tiles);
-}
-
-function is_lose(tiles) {
-  if (some(tiles, (x) => x == 0)) return false;
-  const message = document.querySelector(".message");
-  message.innerHTML = "you lose!";
-  message.classList.remove("hidden");
-  return true;
-}
-
-function is_win(tiles) {
-  if (!some(tiles, (x) => x == 2048)) return false;
-  const message = document.querySelector(".message");
-  message.innerHTML = "you win!";
-  message.classList.remove("hidden");
-  return true;
-}
-
-function cloned(tiles) {
-  return JSON.parse(JSON.stringify(tiles));
-}
-
-function is_equal(left, right) {
-  return JSON.stringify(left) == JSON.stringify(right);
-}
-
-function merge_up(tiles) {
-  for (let i = 0; i < tiles.length - 1; ++i) {
-    const current = tiles[i];
-    const next = tiles[i + 1];
-    if (current == next) {
-      tiles[i] = current * 2;
-      tiles[i + 1] = 0;
-    }
-  }
-  return filter(tiles, (x) => x !== 0);
-}
-function merge_right(tiles) {
-  for (let i = tiles.length - 1; i > 0; --i) {
-    const current = tiles[i];
-    const next = tiles[i - 1];
-    if (current == next) {
-      tiles[i] = current * 2;
-      tiles[i - 1] = 0;
-    }
-  }
-  return filter(tiles, (x) => x !== 0);
-}
-function merge_down(tiles) {
-  for (let i = tiles.length - 1; i > 0; --i) {
-    const current = tiles[i];
-    const next = tiles[i - 1];
-    if (current == next) {
-      tiles[i] = current * 2;
-      tiles[i - 1] = 0;
-    }
-  }
-  return filter(tiles, (x) => x !== 0);
-}
-function merge_left(tiles) {
-  for (let i = 0; i < tiles.length - 1; ++i) {
-    const current = tiles[i];
-    const next = tiles[i + 1];
-    if (current == next) {
-      tiles[i] = current * 2;
-      tiles[i + 1] = 0;
-    }
-  }
-  return filter(tiles, (x) => x !== 0);
-}
-
-function some(xs, f) {
-  for (const [i, x] of xs.entries()) {
-    if (f(x, i, xs)) return true;
-  }
-  return false;
-}
-function filter(xs, f) {
-  const ys = [];
-  for (const [i, x] of xs.entries()) {
-    if (f(x, i, xs)) {
-      ys.push(x);
-    }
-  }
-  return ys;
-}
-function concat(xs, ys) {
-  let zs = [];
-  for (const x of xs) {
-    zs = [...zs, x];
-  }
-  for (const y of ys) {
-    zs.push(y);
-  }
-  return zs;
+function show_message(message) {
+  const messageElement = document.querySelector(".message");
+  messageElement.innerHTML = message;
+  messageElement.classList.remove("hidden");
 }
 
 main();

@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.html",
+  "type": "module",
   "scripts": {
     "start": "parcel index.html --open",
     "build": "parcel build index.html"
   },
+  "keywords": [],
   "dependencies": {
-    "parcel-bundler": "^2.1.1"
-  },
-  "keywords": []
+    "parcel-bundler": "^1.12.5"
+  }
 }
